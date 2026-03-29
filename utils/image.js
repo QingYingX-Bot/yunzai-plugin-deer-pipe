@@ -36,15 +36,14 @@ function getMonthCalendar(now) {
     return cal;
 }
 
-
 /**
  * 生成签到图片
  * 源代码来自：https://github.com/SamuNatsu/nonebot-plugin-deer-pipe/blob/main/src/nonebot_plugin_deer_pipe/image.py
- * @param now
- * @param name
- * @param deer
- * @param status
- * @returns {Promise<*>}
+ * @param {Date} now 当前日期
+ * @param {string} name 用户名
+ * @param {object} deer 签到数据
+ * @param {string} status 状态
+ * @returns {Promise<Buffer>} 图片Buffer
  */
 export async function generateImage(now, name, deer, status = null) {
     const cal = getMonthCalendar(now);
@@ -162,5 +161,3 @@ export async function generateImage(now, name, deer, status = null) {
 
     return imgBuffer;
 }
-
-

@@ -1,6 +1,6 @@
 import puppeteer from "../../../lib/puppeteer/puppeteer.js";
 import { REDIS_YUNZAI_DEER_PIPE } from "../constants/core.js";
-import { redisExistAndGetKey } from "../utils/redis-util.js";
+import { redisExistAndGetKey } from "../utils/redis.js";
 import Base from "../model/base.js";
 
 export class LeaderboardApp extends plugin {

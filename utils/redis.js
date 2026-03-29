@@ -1,4 +1,4 @@
-// Redis工具函数 - 只保留实际使用的函数
+// Redis工具函数
 export async function redisExistAndGetKey(key) {
     if (await redis.exists(key)) {
         return JSON.parse(await redis.get(key));
