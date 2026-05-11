@@ -3,6 +3,7 @@
 import { REDIS_YUNZAI_DEER_PIPE } from '../constants/core.js';
 import { redisExistAndGetKey } from '../utils/redis.js';
 import { generateImage } from '../utils/image.js';
+import { getPreviousMonthDate, getUserMonthData } from '../utils/monthData.js';
 
 export class QueryApp extends plugin {
     constructor() {
@@ -13,7 +14,7 @@ export class QueryApp extends plugin {
             priority: 5000,
             rule: [
                 {
-                    reg: "^#鹿鹿查询$",
+                    reg: "^#鹿鹿查询(?:\\s*(?:上月|上个月|下月|下个月))?$",
                     fnc: "viewSign",
                 }
             ]
@@ -35,6 +36,11 @@ export class QueryApp extends plugin {
      * @param {object} e 事件对象
      */
     async viewSign(e) {
+        if (/下个?月/.test(e.msg)) {
+            await e.reply("？你怎么知道你下个月要飞几次？");
+            return;
+        }
+
         let user, isAt = false;
         if (e.at) {
             const curGroup = e.group || Bot?.pickGroup(e.group_id);
@@ -47,28 +53,32 @@ export class QueryApp extends plugin {
 
         const { user_id, nickname, card } = user;
         const userId = parseInt(user_id);
-        const date = new Date();
+        const now = new Date();
+        const isPreviousMonth = /上个?月/.test(e.msg);
+        const date = isPreviousMonth ? getPreviousMonthDate(now) : now;
         const signData = await redisExistAndGetKey(REDIS_YUNZAI_DEER_PIPE) || {};
-        const curMonth = date.getMonth() + 1;
+        const userMonthData = getUserMonthData(signData[userId], date, now);
+        const targetMonth = date.getMonth() + 1;
+        const monthText = isPreviousMonth ? '上月' : '本月';
 
-        if (!signData[userId] || signData[userId].lastSignMonth !== curMonth) {
-            await e.reply(isAt ? "ta本月还没有🦌过呢~" : "你本月还没有🦌过呢~");
+        if (!userMonthData) {
+            await e.reply(isAt ? `ta${monthText}还没有🦌过呢~` : `你${monthText}还没有🦌过呢~`);
             return;
         }
 
         let totalCount = 0;
         let activeDays = 0;
-        for (const day in signData[userId]) {
-            if (day !== 'lastSignMonth' && !day.startsWith('w_') && signData[userId][day] > 0) {
-                totalCount += signData[userId][day];
+        for (const day in userMonthData) {
+            if (day !== 'lastSignMonth' && day !== 'monthHistory' && !day.startsWith('w_') && userMonthData[day] > 0) {
+                totalCount += userMonthData[day];
                 activeDays++;
             }
         }
         const avgCount = activeDays > 0 ? Math.floor(totalCount / activeDays) : 0;
         const displayName = this.filterMessageContent(card || nickname);
 
-        const raw = await generateImage(date, card || nickname, signData[userId], null);
-        const statsText = `📊 ${displayName} 的鹿鹿查询\n📅 统计月份：${curMonth}月\n🦌 总次数：${totalCount}次\n📆 活跃天数：${activeDays}天\n📈 平均每天：${avgCount}次`;
+        const raw = await generateImage(date, card || nickname, userMonthData, null);
+        const statsText = `📊 ${displayName} 的鹿鹿查询\n📅 统计月份：${targetMonth}月\n🦌 总次数：${totalCount}次\n📆 活跃天数：${activeDays}天\n📈 平均每天：${avgCount}次`;
 
         await e.reply([statsText, segment.image(raw)]);
     }

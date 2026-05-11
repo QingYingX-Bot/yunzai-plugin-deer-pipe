@@ -16,7 +16,7 @@ export class StatsApp extends plugin {
                     fnc: "groupStats",
                 },
                 {
-                    reg: "^#总鹿鹿统计$",
+                    reg: "^#(?:鹿鹿总|总鹿鹿)统计$",
                     fnc: "totalStats",
                 }
             ]
@@ -31,6 +31,42 @@ export class StatsApp extends plugin {
     filterMessageContent(text) {
         if (!text) return '';
         return text.replace(/[^\u4e00-\u9fa5a-zA-Z0-9\s\-_()（）【】\[\]{}，。！？、：；""''…~@#$%^&*+=|\\/<>]/g, '');
+    }
+
+    getUserMonthlyStats(userData, currentMonth) {
+        if (!userData || userData.lastSignMonth !== currentMonth) {
+            return null;
+        }
+
+        let count = 0;
+        let days = 0;
+        for (const day in userData) {
+            if (day !== 'lastSignMonth' && day !== 'monthHistory' && !day.startsWith('w_') && userData[day] > 0) {
+                count += userData[day];
+                days++;
+            }
+        }
+
+        return count > 0 ? { count, days } : null;
+    }
+
+    async getCurrentGroupMemberMap(e) {
+        if (!e.group_id) return null;
+        const curGroup = e.group || Bot?.pickGroup(e.group_id);
+        return await curGroup?.getMemberMap();
+    }
+
+    maskUserId(userId) {
+        const text = String(userId);
+        if (text.length <= 6) {
+            return `QQ-${text}`;
+        }
+        return `QQ-${text.slice(0, 3)}***${text.slice(-3)}`;
+    }
+
+    getDisplayName(userId, membersMap) {
+        const member = membersMap?.get(Number(userId));
+        return this.filterMessageContent(member?.card || member?.nickname || this.maskUserId(userId));
     }
 
     /**
@@ -59,26 +95,16 @@ export class StatsApp extends plugin {
         const userStats = [];
 
         for (const [userId, member] of membersMap) {
-            const userData = signData[userId];
-            if (userData && userData.lastSignMonth === currentMonth) {
-                let userTotalCount = 0;
-                let userActiveDays = 0;
-                for (const day in userData) {
-                    if (day !== 'lastSignMonth' && !day.startsWith('w_') && userData[day] > 0) {
-                        userTotalCount += userData[day];
-                        userActiveDays++;
-                    }
-                }
-                if (userTotalCount > 0) {
-                    groupTotalCount += userTotalCount;
-                    groupActiveUsers++;
-                    groupActiveDays += userActiveDays;
-                    userStats.push({
-                        name: this.filterMessageContent(member.card || member.nickname),
-                        count: userTotalCount,
-                        days: userActiveDays
-                    });
-                }
+            const stats = this.getUserMonthlyStats(signData[userId], currentMonth);
+            if (stats) {
+                groupTotalCount += stats.count;
+                groupActiveUsers++;
+                groupActiveDays += stats.days;
+                userStats.push({
+                    name: this.filterMessageContent(member.card || member.nickname),
+                    count: stats.count,
+                    days: stats.days
+                });
             }
         }
 
@@ -104,36 +130,37 @@ export class StatsApp extends plugin {
     async totalStats(e) {
         const currentMonth = new Date().getMonth() + 1;
         const signData = await redisExistAndGetKey(REDIS_YUNZAI_DEER_PIPE) || {};
+        const membersMap = await this.getCurrentGroupMemberMap(e);
         
         let globalTotalCount = 0;
         let globalActiveUsers = 0;
         let globalActiveDays = 0;
+        const userStats = [];
 
         for (const userId in signData) {
-            const userData = signData[userId];
-            if (userData && userData.lastSignMonth === currentMonth) {
-                let userTotalCount = 0;
-                let userActiveDays = 0;
-                for (const day in userData) {
-                    if (day !== 'lastSignMonth' && !day.startsWith('w_') && userData[day] > 0) {
-                        userTotalCount += userData[day];
-                        userActiveDays++;
-                    }
-                }
-                if (userTotalCount > 0) {
-                    globalTotalCount += userTotalCount;
-                    globalActiveUsers++;
-                    globalActiveDays += userActiveDays;
-                }
+            const stats = this.getUserMonthlyStats(signData[userId], currentMonth);
+            if (stats) {
+                globalTotalCount += stats.count;
+                globalActiveUsers++;
+                globalActiveDays += stats.days;
+                userStats.push({
+                    name: this.getDisplayName(userId, membersMap),
+                    count: stats.count,
+                    days: stats.days
+                });
             }
         }
 
-        let statsText = `📊 全局鹿鹿统计\n📅 统计月份：${currentMonth}月\n🦌 全局总次数：${globalTotalCount}次\n👥 活跃用户：${globalActiveUsers}人\n📆 总活跃天数：${globalActiveDays}天`;
-        
-        if (globalActiveDays > 0 || globalActiveUsers > 0) {
-            const avgCount = globalActiveDays > 0 ? Math.floor(globalTotalCount / globalActiveDays) : 0;
-            const avgUser = globalActiveUsers > 0 ? Math.floor(globalTotalCount / globalActiveUsers) : 0;
-            statsText += `\n📈 平均每天：${avgCount}次\n👤 平均每人：${avgUser}次`;
+        userStats.sort((a, b) => b.count - a.count);
+
+        let statsText = `📊 全局鹿鹿统计 - ${currentMonth}月\n🦌 全局总次数：${globalTotalCount}次\n👥 活跃用户：${globalActiveUsers}人\n📆 总活跃天数：${globalActiveDays}天`;
+
+        if (userStats.length > 0) {
+            const medals = ['🥇', '🥈', '🥉', '🏅', '🏅'];
+            statsText += `\n\n🏆 排行榜：\n`;
+            userStats.slice(0, 5).forEach((user, index) => {
+                statsText += `${medals[index]} ${user.name}: ${user.count}次 (${user.days}天)\n`;
+            });
         }
 
         await e.reply(statsText);

@@ -3,6 +3,7 @@
 import { REDIS_YUNZAI_DEER_PIPE } from '../constants/core.js';
 import { redisExistAndGetKey, redisSetKey } from '../utils/redis.js';
 import { generateImage } from '../utils/image.js';
+import { ensureCurrentMonthData, getUserMonthData } from '../utils/monthData.js';
 
 export class SignApp extends plugin {
     constructor() {
@@ -83,26 +84,22 @@ export class SignApp extends plugin {
      * @param {boolean} isMakeup 是否补签
      */
     async recordSign(userId, day, isMakeup = false) {
-        const currentMonth = new Date().getMonth() + 1;
         let deerData = await redisExistAndGetKey(REDIS_YUNZAI_DEER_PIPE) || {};
-
-        if (!deerData[userId] || deerData[userId].lastSignMonth !== currentMonth) {
-            deerData[userId] = { lastSignMonth: currentMonth };
-        }
+        const userData = ensureCurrentMonthData(deerData, userId);
 
         const dayKey = String(day);
-        if (deerData[userId][dayKey] === undefined) {
-            deerData[userId][dayKey] = 0;
+        if (userData[dayKey] === undefined) {
+            userData[dayKey] = 0;
         }
 
         if (isMakeup) {
-            deerData[userId][dayKey] = 1;
+            userData[dayKey] = 1;
         } else {
-            deerData[userId][dayKey] += 1;
+            userData[dayKey] += 1;
         }
 
         await redisSetKey(REDIS_YUNZAI_DEER_PIPE, deerData);
-        return deerData[userId][dayKey];
+        return userData[dayKey];
     }
 
     /**
@@ -114,9 +111,10 @@ export class SignApp extends plugin {
     async getSignData(userId, day) {
         const deerData = await redisExistAndGetKey(REDIS_YUNZAI_DEER_PIPE) || {};
         const dayKey = String(day);
-        if (!deerData[userId]) {
+        const userMonthData = getUserMonthData(deerData[userId], new Date());
+        if (!userMonthData) {
             return undefined;
         }
-        return deerData[userId][dayKey];
+        return userMonthData[dayKey];
     }
 }
